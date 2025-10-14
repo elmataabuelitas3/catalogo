@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Catálogo Interactivo</title>
+
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --text: #0f172a;
+      --accent: #1e293b;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, Arial;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px;
+      position: sticky;
+      top: 0;
+      background: rgba(255, 255, 255, 0.8);
+      backdrop-filter: blur(6px);
+      z-index: 10;
+      width: 100%;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .btn {
+      border: 1px solid #cbd5e1;
+      background: white;
+      border-radius: 8px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+
+    .btn:hover {
+      background: #f1f5f9;
+    }
+
+    #canvasWrap {
+      position: relative;
+      width: fit-content;
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: flex-start;
+      margin: 20px auto;
+      background: white;
+      padding: 10px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+      transition: transform 0.5s ease, opacity 0.5s ease;
+    }
+
+    #canvasWrap.animating-left {
+      transform: translateX(-50px);
+      opacity: 0;
+    }
+
+    #canvasWrap.animating-right {
+      transform: translateX(50px);
+      opacity: 0;
+    }
+
+    .pdfCanvas {
+      background: white;
+      border-radius: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      transition: all 0.3s ease;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 13px;
+      color: #64748b;
+      margin: 10px 0 20px;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <button id="prevPage" class="btn">◀ Anterior</button>
+    <div id="pageInfo">1-2 / ?</div>
+    <button id="nextPage" class="btn">Siguiente ▶</button>
+    <button id="zoomOut" class="btn">-</button>
+    <div id="zoomValue">100%</div>
+    <button id="zoomIn" class="btn">+</button>
+    <a href="LOOKBOOK.pdf" download class="btn">⬇ Descargar</a>
+  </header>
+
+  <div id="canvasWrap">
+    <canvas id="canvasLeft" class="pdfCanvas"></canvas>
+    <canvas id="canvasRight" class="pdfCanvas"></canvas>
+  </div>
+
+  <footer>Catálogo interactivo en modo libro • Vitos</footer>
+
+  <script>
+    const PDF_URL = "LOOKBOOK.pdf";
+    const pdfjsLib = window["pdfjs-dist/build/pdf"];
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const canvasWrap = document.getElementById("canvasWrap");
+    const canvasLeft = document.getElementById("canvasLeft");
+    const canvasRight = document.getElementById("canvasRight");
+    const ctxLeft = canvasLeft.getContext("2d");
+    const ctxRight = canvasRight.getContext("2d");
+
+    let pdfDoc = null;
+    let currentPage = 1;
+    let scale = 1.0;
+
+    function updateInfo() {
+      const total = pdfDoc ? pdfDoc.numPages : "?";
+      document.getElementById("pageInfo").textContent = `${currentPage}-${Math.min(currentPage + 1, total)} / ${total}`;
+      document.getElementById("zoomValue").textContent = Math.round(scale * 100) + "%";
+    }
+
+    async function renderPage(num, canvas, ctx) {
+      if (num > pdfDoc.numPages) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+      }
+
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale });
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+
+      await page.render({ canvasContext: ctx, viewport }).promise;
+    }
+
+    async function animateCatalog(direction) {
+      // Aplica clase de animación al contenedor
+      const className = direction === 'next' ? 'animating-left' : 'animating-right';
+      canvasWrap.classList.add(className);
+
+      // Espera el tiempo de la animación
+      await new Promise(r => setTimeout(r, 300));
+
+      await renderBookPages();
+
+      // Reinicia animación
+      canvasWrap.classList.remove(className);
+    }
+
+    async function renderBookPages() {
+      await renderPage(currentPage, canvasLeft, ctxLeft);
+      await renderPage(currentPage + 1, canvasRight, ctxRight);
+      updateInfo();
+    }
+
+    document.getElementById("prevPage").onclick = async () => {
+      if (currentPage > 2) {
+        currentPage -= 2;
+        await animateCatalog('prev');
+      } else if (currentPage > 1) {
+        currentPage = 1;
+        await animateCatalog('prev');
+      }
+    };
+
+    document.getElementById("nextPage").onclick = async () => {
+      if (currentPage + 1 < pdfDoc.numPages) {
+        currentPage += 2;
+        await animateCatalog('next');
+      }
+    };
+
+    document.getElementById("zoomIn").onclick = () => {
+      scale += 0.25;
+      renderBookPages();
+    };
+
+    document.getElementById("zoomOut").onclick = () => {
+      scale = Math.max(0.5, scale - 0.25);
+      renderBookPages();
+    };
+
+    async function loadPdf() {
+      pdfDoc = await pdfjsLib.getDocument(PDF_URL).promise;
+      renderBookPages();
+    }
+
+    loadPdf();
+  </script>
+</body>
+</html>
